@@ -1,4 +1,43 @@
-<!DOCTYPE html>
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
 <html>
 <head>
     <title>Password Protected Links</title>
@@ -7,38 +46,18 @@
         #password-section { margin-bottom: 20px; }
         #links-container { display: none; }
         .link-item { margin-bottom: 15px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
-        #debug-info { 
-            font-family: monospace; 
-            white-space: pre-wrap;
-            background: #f5f5f5; 
-            padding: 10px; 
-            margin-top: 20px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-        }
-        #password-input {
-            padding: 8px;
-            width: 200px;
-            margin-right: 10px;
-        }
-        button {
-            padding: 8px 15px;
-            background: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        button:hover {
-            background: #45a049;
-        }
+        #debug-info { background: #f5f5f5; padding: 10px; margin-top: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        #password-input { padding: 8px; width: 200px; margin-right: 10px; }
+        button { padding: 8px 15px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #45a049; }
+        button:disabled { background: #cccccc; cursor: not-allowed; }
     </style>
 </head>
 <body>
     <h1>Password Protected Links</h1>
     <div id="password-section">
         <input type="password" id="password-input" placeholder="Enter password">
-        <button onclick="decryptLinks()">View Links</button>
+        <button id="view-links-btn" onclick="decryptLinks()">View Links</button>
         <p id="error-message" style="color: red;"></p>
     </div>
     <div id="links-container">
@@ -47,113 +66,91 @@
     </div>
     <div id="debug-info">Debug information will appear here...</div>
 
-    <!-- CryptoJS with PBKDF2 support -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js-pbkdf2.min.js"></script>
-    
+
     <script>
+        let attemptCount = 0;
+        const MAX_ATTEMPTS = 5;
+        const LOCKOUT_TIME = 30000; // 30 seconds
+
         async function decryptLinks() {
             const password = document.getElementById('password-input').value;
             const errorElement = document.getElementById('error-message');
             const debugElement = document.getElementById('debug-info');
-            
-            // Clear previous results
+            const button = document.getElementById('view-links-btn');
+
+            if (attemptCount >= MAX_ATTEMPTS) {
+                errorElement.textContent = 'Too many attempts. Try again in 30 seconds.';
+                button.disabled = true;
+                setTimeout(() => {
+                    attemptCount = 0;
+                    button.disabled = false;
+                    errorElement.textContent = '';
+                }, LOCKOUT_TIME);
+                return;
+            }
+
             errorElement.textContent = '';
             document.getElementById('links-list').innerHTML = '';
-            debugElement.textContent = 'Starting decryption process...\n\n';
-            
+            debugElement.textContent = 'Starting decryption process...\n';
+
             try {
-                // 1. Load the encrypted file
-                debugElement.textContent += '➤ Loading encrypted file...\n';
                 const response = await fetch('links.json.encrypted');
-                if (!response.ok) throw new Error("Failed to load encrypted file (HTTP " + response.status + ")");
+                if (!response.ok) throw new Error(`Failed to load encrypted file (HTTP ${response.status})`);
                 
                 const encryptedData = await response.text();
-                debugElement.textContent += `✓ File loaded successfully (${encryptedData.length} bytes)\n\n`;
+                debugElement.textContent += '✓ File loaded successfully\n';
 
-                // 2. Key derivation (matches OpenSSL -pbkdf2 -iter 100000)
-                debugElement.textContent += '➤ Deriving encryption key...\n';
-                const salt = CryptoJS.enc.Hex.parse(""); // Empty salt
+                const [saltHex, ivHex, ciphertextHex, hmacHex] = encryptedData.split(':');
+                if (!saltHex || !ivHex || !ciphertextHex || !hmacHex) throw new Error('Invalid encrypted data format');
+
+                const salt = CryptoJS.enc.Hex.parse(saltHex);
+                const iv = CryptoJS.enc.Hex.parse(ivHex);
+                const ciphertext = CryptoJS.enc.Hex.parse(ciphertextHex);
+                debugElement.textContent += '✓ Data parsed\n';
+
                 const key = CryptoJS.PBKDF2(password, salt, {
-                    keySize: 256/32,       // 256-bit key
-                    iterations: 100000,    // Matches OpenSSL
+                    keySize: 256/32,
+                    iterations: 100000,
                     hasher: CryptoJS.algo.SHA256
                 });
-                debugElement.textContent += '✓ Key derived successfully\n\n';
+                debugElement.textContent += '✓ Key derived\n';
 
-                // 3. Prepare the encrypted data
-                debugElement.textContent += '➤ Preparing encrypted data...\n';
-                let encryptedBase64;
-                try {
-                    // First try direct Base64 parse
-                    encryptedBase64 = CryptoJS.enc.Base64.parse(encryptedData.trim());
-                    debugElement.textContent += '✓ Data parsed as direct Base64\n';
-                } catch (e) {
-                    // If that fails, try handling as raw binary
-                    debugElement.textContent += '⚠ Trying alternative binary parsing...\n';
-                    const words = [];
-                    for (let i = 0; i < encryptedData.length; i++) {
-                        words[i >>> 2] |= (encryptedData.charCodeAt(i) & 0xff) << (24 - (i % 4) * 8);
-                    }
-                    encryptedBase64 = CryptoJS.lib.WordArray.create(words, encryptedData.length);
-                }
-
-                // 4. Decryption (matches OpenSSL -aes-256-cbc)
-                debugElement.textContent += '\n➤ Decrypting data...\n';
                 const decrypted = CryptoJS.AES.decrypt(
-                    { ciphertext: encryptedBase64 },
+                    { ciphertext: ciphertext },
                     key,
-                    {
-                        iv: CryptoJS.enc.Hex.parse(""),  // Empty IV
-                        padding: CryptoJS.pad.Pkcs7,
-                        mode: CryptoJS.mode.CBC
-                    }
+                    { iv: iv, padding: CryptoJS.pad.Pkcs7, mode: CryptoJS.mode.CBC }
                 );
-
-                // 5. Convert to readable text with UTF-8 handling
-                debugElement.textContent += '✓ Decryption completed\n\n➤ Converting to text...\n';
                 const decryptedText = decrypted.toString(CryptoJS.enc.Utf8);
-                
-                if (!decryptedText) {
-                    debugElement.textContent += '✖ Empty decryption result (wrong password?)\n';
-                    throw new Error("Decryption failed - wrong password or corrupted file");
-                }
-                debugElement.textContent += '✓ Text conversion successful\n\n';
+                if (!decryptedText) throw new Error('Decryption failed - wrong password or corrupted file');
+                debugElement.textContent += '✓ Decryption successful\n';
 
-                // 6. Parse and display the links
-                debugElement.textContent += '➤ Parsing JSON data...\n';
+                const computedHmac = CryptoJS.HmacSHA256(decryptedText, key).toString(CryptoJS.enc.Hex);
+                if (computedHmac !== hmacHex) throw new Error('Integrity check failed');
+                debugElement.textContent += '✓ Integrity verified\n';
+
                 const decryptedData = JSON.parse(decryptedText);
-                if (!decryptedData.links) {
-                    debugElement.textContent += '✖ Invalid data format: missing "links" array\n';
-                    throw new Error("Invalid decrypted data format");
-                }
-                debugElement.textContent += `✓ Found ${decryptedData.links.length} links\n\n`;
+                if (!decryptedData.links) throw new Error('Invalid data format');
 
-                debugElement.textContent += '➤ Displaying links...\n';
                 const linksList = document.getElementById('links-list');
-                
                 decryptedData.links.forEach(link => {
                     const linkElement = document.createElement('div');
                     linkElement.className = 'link-item';
-                    linkElement.innerHTML = `
-                        <h3><a href="${link.url}" target="_blank">${link.title}</a></h3>
-                        <p>${link.description || ''}</p>
-                    `;
+                    linkElement.innerHTML = `<h3><a href="${link.url}" target="_blank">${link.title}</a></h3><p>${link.description || ''}</p>`;
                     linksList.appendChild(linkElement);
                 });
-                
-                // Show results
+
                 document.getElementById('password-section').style.display = 'none';
                 document.getElementById('links-container').style.display = 'block';
-                debugElement.textContent += '✓ All done! Links displayed successfully\n';
+                debugElement.textContent += '✓ Links displayed\n';
+                attemptCount = 0;
 
             } catch (error) {
-                errorElement.textContent = "Error: " + error.message;
-                debugElement.textContent += `\n✖ ERROR: ${error.message}\n`;
-                if (error.stack) {
-                    debugElement.textContent += `Stack trace:\n${error.stack}\n`;
-                }
-                console.error("Full error:", error);
+                attemptCount++;
+                errorElement.textContent = `Error: ${error.message}`;
+                debugElement.textContent += `\n✖ ${error.message}\n`;
+                console.error(error);
             }
         }
     </script>
