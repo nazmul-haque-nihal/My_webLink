@@ -7,7 +7,31 @@
         #password-section { margin-bottom: 20px; }
         #links-container { display: none; }
         .link-item { margin-bottom: 15px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
-        #debug-info { font-family: monospace; background: #f5f5f5; padding: 10px; margin-top: 20px; }
+        #debug-info { 
+            font-family: monospace; 
+            white-space: pre-wrap;
+            background: #f5f5f5; 
+            padding: 10px; 
+            margin-top: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        #password-input {
+            padding: 8px;
+            width: 200px;
+            margin-right: 10px;
+        }
+        button {
+            padding: 8px 15px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #45a049;
+        }
     </style>
 </head>
 <body>
@@ -21,7 +45,7 @@
         <h2>Your Links</h2>
         <div id="links-list"></div>
     </div>
-    <div id="debug-info"></div>
+    <div id="debug-info">Debug information will appear here...</div>
 
     <!-- CryptoJS with PBKDF2 support -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
@@ -36,36 +60,48 @@
             // Clear previous results
             errorElement.textContent = '';
             document.getElementById('links-list').innerHTML = '';
-            debugElement.textContent = 'Starting decryption...\n';
+            debugElement.textContent = 'Starting decryption process...\n\n';
             
             try {
                 // 1. Load the encrypted file
-                debugElement.textContent += 'Loading encrypted file...\n';
+                debugElement.textContent += '➤ Loading encrypted file...\n';
                 const response = await fetch('links.json.encrypted');
-                if (!response.ok) throw new Error("Failed to load encrypted file");
+                if (!response.ok) throw new Error("Failed to load encrypted file (HTTP " + response.status + ")");
                 
                 const encryptedData = await response.text();
-                debugElement.textContent += `File loaded (${encryptedData.length} bytes)\n`;
-                
+                debugElement.textContent += `✓ File loaded successfully (${encryptedData.length} bytes)\n\n`;
+
                 // 2. Key derivation (matches OpenSSL -pbkdf2 -iter 100000)
-                debugElement.textContent += 'Deriving key...\n';
+                debugElement.textContent += '➤ Deriving encryption key...\n';
                 const salt = CryptoJS.enc.Hex.parse(""); // Empty salt
                 const key = CryptoJS.PBKDF2(password, salt, {
                     keySize: 256/32,       // 256-bit key
                     iterations: 100000,    // Matches OpenSSL
                     hasher: CryptoJS.algo.SHA256
                 });
-                
-                // 3. Decryption (matches OpenSSL -aes-256-cbc)
-                debugElement.textContent += 'Decrypting...\n';
+                debugElement.textContent += '✓ Key derived successfully\n\n';
+
+                // 3. Prepare the encrypted data
+                debugElement.textContent += '➤ Preparing encrypted data...\n';
+                let encryptedBase64;
+                try {
+                    // First try direct Base64 parse
+                    encryptedBase64 = CryptoJS.enc.Base64.parse(encryptedData.trim());
+                    debugElement.textContent += '✓ Data parsed as direct Base64\n';
+                } catch (e) {
+                    // If that fails, try handling as raw binary
+                    debugElement.textContent += '⚠ Trying alternative binary parsing...\n';
+                    const words = [];
+                    for (let i = 0; i < encryptedData.length; i++) {
+                        words[i >>> 2] |= (encryptedData.charCodeAt(i) & 0xff) << (24 - (i % 4) * 8);
+                    }
+                    encryptedBase64 = CryptoJS.lib.WordArray.create(words, encryptedData.length);
+                }
+
+                // 4. Decryption (matches OpenSSL -aes-256-cbc)
+                debugElement.textContent += '\n➤ Decrypting data...\n';
                 const decrypted = CryptoJS.AES.decrypt(
-                    {
-                        ciphertext: CryptoJS.enc.Base64.parse(
-                            encryptedData
-                                .replace(/\r\n/g, '\n')  // Normalize line endings
-                                .trim()                  // Remove any extra whitespace
-                        )
-                    },
+                    { ciphertext: encryptedBase64 },
                     key,
                     {
                         iv: CryptoJS.enc.Hex.parse(""),  // Empty IV
@@ -73,18 +109,27 @@
                         mode: CryptoJS.mode.CBC
                     }
                 );
-                
-                // 4. Convert to readable text
+
+                // 5. Convert to readable text with UTF-8 handling
+                debugElement.textContent += '✓ Decryption completed\n\n➤ Converting to text...\n';
                 const decryptedText = decrypted.toString(CryptoJS.enc.Utf8);
-                debugElement.textContent += `Decryption ${decryptedText ? 'successful' : 'failed'}\n`;
                 
-                if (!decryptedText) throw new Error("Decryption failed - wrong password or corrupted file");
-                
-                // 5. Parse and display the links
+                if (!decryptedText) {
+                    debugElement.textContent += '✖ Empty decryption result (wrong password?)\n';
+                    throw new Error("Decryption failed - wrong password or corrupted file");
+                }
+                debugElement.textContent += '✓ Text conversion successful\n\n';
+
+                // 6. Parse and display the links
+                debugElement.textContent += '➤ Parsing JSON data...\n';
                 const decryptedData = JSON.parse(decryptedText);
-                if (!decryptedData.links) throw new Error("Invalid decrypted data format");
-                
-                debugElement.textContent += 'Displaying links...\n';
+                if (!decryptedData.links) {
+                    debugElement.textContent += '✖ Invalid data format: missing "links" array\n';
+                    throw new Error("Invalid decrypted data format");
+                }
+                debugElement.textContent += `✓ Found ${decryptedData.links.length} links\n\n`;
+
+                debugElement.textContent += '➤ Displaying links...\n';
                 const linksList = document.getElementById('links-list');
                 
                 decryptedData.links.forEach(link => {
@@ -100,11 +145,14 @@
                 // Show results
                 document.getElementById('password-section').style.display = 'none';
                 document.getElementById('links-container').style.display = 'block';
-                debugElement.textContent += 'Done!';
-                
+                debugElement.textContent += '✓ All done! Links displayed successfully\n';
+
             } catch (error) {
                 errorElement.textContent = "Error: " + error.message;
-                debugElement.textContent += `\nERROR: ${error.message}`;
+                debugElement.textContent += `\n✖ ERROR: ${error.message}\n`;
+                if (error.stack) {
+                    debugElement.textContent += `Stack trace:\n${error.stack}\n`;
+                }
                 console.error("Full error:", error);
             }
         }
