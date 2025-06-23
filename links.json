@@ -1,0 +1,9 @@
+﻿{
+  "links": [
+    {
+      "title": "Test Link",
+      "url": "https://example.com",
+      "description": "Test description"
+    }
+  ]
+}
