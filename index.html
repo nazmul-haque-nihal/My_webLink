@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Password Protected Links</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        #password-section { margin-bottom: 20px; }
+        #links-container { display: none; }
+        .link-item { margin-bottom: 15px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Password Protected Links</h1>
+    <div id="password-section">
+        <input type="password" id="password-input" placeholder="Enter password">
+        <button onclick="decryptLinks()">View Links</button>
+        <p id="error-message" style="color: red;"></p>
+    </div>
+    <div id="links-container">
+        <h2>Your Links</h2>
+        <div id="links-list"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <script>
+        async function decryptLinks() {
+            const password = document.getElementById('password-input').value;
+            const errorElement = document.getElementById('error-message');
+            
+            try {
+                // Fetch the encrypted file
+                const response = await fetch('links.json.encrypted');
+                const encryptedData = await response.text();
+                
+                // Decrypt using CryptoJS
+                const bytes = CryptoJS.AES.decrypt(encryptedData, password);
+                const decryptedData = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+                
+                if (!decryptedData || !decryptedData.links) {
+                    throw new Error("Invalid password or corrupted data");
+                }
+                
+                // Display links
+                const linksList = document.getElementById('links-list');
+                linksList.innerHTML = '';
+                
+                decryptedData.links.forEach(link => {
+                    const linkElement = document.createElement('div');
+                    linkElement.className = 'link-item';
+                    linkElement.innerHTML = `
+                        <h3><a href="${link.url}" target="_blank">${link.title}</a></h3>
+                        <p>${link.description || ''}</p>
+                    `;
+                    linksList.appendChild(linkElement);
+                });
+                
+                document.getElementById('password-section').style.display = 'none';
+                document.getElementById('links-container').style.display = 'block';
+            } catch (error) {
+                errorElement.textContent = "Incorrect password or error decrypting data";
+                console.error(error);
+            }
+        }
+    </script>
+</body>
+</html>
