@@ -10,7 +10,7 @@ const linksData = {
         { title: 'Secure Note', url: 'https://sample-project-2vloudeoh-nazs-projects-2ad5d7f7.vercel.app/', description: 'A secure project note' },
         { title: 'SPD_bot', url: 'https://nazmul-ai-chatbot.onrender.com', description: 'AI chatbot interface' },
         { title: 'SPD_saveFile', url: 'https://anonymous-file-saver-451jevpdh-nazs-projects-2ad5d7f7.vercel.app/', description: 'Send file securely' },
-        { title: 'Example Site', url: 'https://www.protectedtext.com/19501630331399581512673496', description: 'Secure Notes for Password' } // New link
+        { title: 'Protected Password', url: 'https://www.protectedtext.com/19501630331399581512673496', description: 'Secure Notes for Password' } // New link
     ]
 };
 
