@@ -4,13 +4,15 @@ const CryptoJS = require('crypto-js');
   const password = 'adgjmptw'; // Match this with your password
 const linksData = {
     links: [
-        { title: 'My Website', url: 'https://nazmul-haque-nihal.github.io/', description: 'My portfolio' },
+        { title: 'My Website', url: 'https://portfolio-lac-nine-86.vercel.app/', description: 'My portfolio' },
         { title: 'Favorite Blog', url: 'https://example.com/blog', description: 'A great read' },
         { title: 'Secure Note Without Vercel', url: 'https://noteapp-723bc.web.app', description: 'This is a private note: Keep it secret!' },
         { title: 'Secure Note', url: 'https://sample-project-2vloudeoh-nazs-projects-2ad5d7f7.vercel.app/', description: 'A secure project note' },
         { title: 'SPD_bot', url: 'https://nazmul-ai-chatbot.onrender.com', description: 'AI chatbot interface' },
         { title: 'SPD_saveFile', url: 'https://anonymous-file-saver-451jevpdh-nazs-projects-2ad5d7f7.vercel.app/', description: 'Send file securely' },
-        { title: 'Protected Password', url: 'https://www.protectedtext.com/19501630331399581512673496', description: 'Secure Notes for Password' } // New link
+        { title: 'Protected Password', url: 'https://www.protectedtext.com/19501630331399581512673496', description: 'Secure Notes for Password' },
+        { title: 'SPD_BD Current Affairs', url: 'https://spd-bd-current-affairs.onrender.com/', description: 'SPD_BD Current Affairs' },
+        { title: 'SPD_International News', url: 'https://spd-news-summery-agent.onrender.com', description: 'International News' },
     ]
 };
 
